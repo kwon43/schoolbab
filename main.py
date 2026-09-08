@@ -445,97 +445,53 @@ if start_date > end_date:
 
 
 # =========================================================
-# 학교 검색
+# 학교 검색 + 여러 학교 누적 선택
 # =========================================================
 
 st.markdown("## 🍓 1. 학교 검색")
 
+# 선택한 학교는 검색창을 바꿔도 유지됩니다.
+if "selected_school_list" not in st.session_state:
+    st.session_state["selected_school_list"] = []
+
 school_name_input = st.text_input(
-    "학교 이름을 입력하세요",
+    "학교 이름을 검색하세요",
     placeholder="예: 서울고, 경기고, 한빛고"
 )
-
-# =========================================================
-# 검색
-# =========================================================
 
 if school_name_input.strip():
 
     with st.spinner("🍰 학교를 찾는 중이에요..."):
+        search_result_df = search_schools(school_name_input.strip())
 
-        school_df = search_schools(
-            school_name_input.strip()
-        )
-
-    if school_df.empty:
-
-        st.warning(
-            "🍪 검색된 학교가 없습니다."
-        )
-
+    if search_result_df.empty:
+        st.warning("🍪 검색된 학교가 없습니다.")
     else:
-
         st.success(
-            f"🍓 {len(school_df)}개의 학교를 찾았습니다!"
+            f"🍓 {len(search_result_df)}개의 학교를 찾았습니다!"
         )
 
-        # -------------------------------------------------
-        # 학교 정보 정리
-        # -------------------------------------------------
+        # 검색 결과를 선택하기 쉽게 정리
+        search_options = []
+        search_info = {}
 
-        school_options = []
-        school_info = {}
+        for _, row in search_result_df.iterrows():
 
-        for index, row in school_df.iterrows():
+            name = str(row.get("SCHUL_NM", ""))
+            location = str(row.get("LCTN_SC_NM", ""))
+            school_kind = str(row.get("SCHUL_KND_SC_NM", ""))
+            office_code = str(row.get("ATPT_OFCDC_SC_CODE", ""))
+            school_code = str(row.get("SD_SCHUL_CODE", ""))
 
-            name = str(
-                row.get(
-                    "SCHUL_NM",
-                    ""
-                )
-            )
-
-            location = str(
-                row.get(
-                    "LCTN_SC_NM",
-                    ""
-                )
-            )
-
-            school_kind = str(
-                row.get(
-                    "SCHUL_KND_SC_NM",
-                    ""
-                )
-            )
-
-            office_code = str(
-                row.get(
-                    "ATPT_OFCDC_SC_CODE",
-                    ""
-                )
-            )
-
-            school_code = str(
-                row.get(
-                    "SD_SCHUL_CODE",
-                    ""
-                )
-            )
-
-            # 학교를 구분하기 위해
-            # 지역 + 종류까지 표시
+            # 같은 이름의 학교도 구분되도록 학교 코드까지 표시
             display = (
-                f"{name} | "
-                f"{location} | "
-                f"{school_kind}"
+                f"{name} | {location} | {school_kind} | "
+                f"학교코드 {school_code}"
             )
 
-            school_options.append(
-                display
-            )
+            search_options.append(display)
 
-            school_info[display] = {
+            search_info[display] = {
                 "name": name,
                 "location": location,
                 "school_kind": school_kind,
@@ -543,172 +499,122 @@ if school_name_input.strip():
                 "school_code": school_code
             }
 
-        # -------------------------------------------------
-        # 여러 학교 선택
-        # -------------------------------------------------
+        st.markdown("### 🍰 2. 이 검색에서 학교 선택")
 
-        st.markdown(
-            "### 🍰 2. 비교할 학교를 선택하세요"
+        picked_from_search = st.selectbox(
+            "학교를 선택하세요",
+            ["선택하지 않음"] + search_options,
+            key="school_search_select"
         )
 
-        st.caption(
-            "🍓 여러 학교를 선택해서 동시에 비교할 수 있습니다. "
-            "최대 6개까지 선택할 수 있어요."
-        )
+        if picked_from_search != "선택하지 않음":
 
-        selected_schools = st.multiselect(
-            "학교 선택",
-            school_options,
-            max_selections=6,
-            placeholder="학교를 여러 개 선택하세요 🍮"
-        )
+            picked_info = search_info[picked_from_search]
 
-        # -------------------------------------------------
-        # 선택 학교 표시
-        # -------------------------------------------------
+            already_added = any(
+                x["school_code"] == picked_info["school_code"]
+                and x["office_code"] == picked_info["office_code"]
+                for x in st.session_state["selected_school_list"]
+            )
 
-        if selected_schools:
+            if already_added:
+                st.info("🍪 이 학교는 이미 선택되어 있어요!")
+            elif len(st.session_state["selected_school_list"]) >= 6:
+                st.warning("🍰 최대 6개 학교까지 선택할 수 있어요.")
+            else:
+                if st.button(
+                    "🍓 이 학교 추가하기",
+                    use_container_width=True,
+                    key="add_school_button"
+                ):
+                    st.session_state["selected_school_list"].append(
+                        picked_info.copy()
+                    )
+                    st.rerun()
+
+# ---------------------------------------------------------
+# 현재 선택된 학교
+# ---------------------------------------------------------
+
+selected_school_list = st.session_state["selected_school_list"]
+
+st.markdown("### 🍮 3. 현재 선택된 학교")
+
+if not selected_school_list:
+    st.info(
+        "🍰 아직 선택한 학교가 없어요.\n\n"
+        "학교를 검색하고 「이 학교 추가하기」를 누른 다음, "
+        "다른 학교를 다시 검색해서 추가하세요!"
+    )
+else:
+
+    st.caption(
+        f"🍓 현재 {len(selected_school_list)}개 학교 선택됨 / 최대 6개"
+    )
+
+    cols = st.columns(min(3, len(selected_school_list)))
+
+    for i, info in enumerate(selected_school_list):
+
+        with cols[i % len(cols)]:
 
             st.markdown(
-                "### 🍩 선택한 학교"
+                f"""
+                <div class="card">
+                    <h3>🍰 {info["name"]}</h3>
+                    <p>🍓 지역: {info["location"]}</p>
+                    <p>🍮 학교 종류: {info["school_kind"]}</p>
+                    <p>🍪 학교코드: {info["school_code"]}</p>
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
-            selected_cols = st.columns(
-                min(3, len(selected_schools))
-            )
+    st.markdown("")
 
-            for i, selected in enumerate(
-                selected_schools
-            ):
+    if st.button(
+        "🗑️ 선택한 학교 전체 지우기",
+        use_container_width=True
+    ):
+        st.session_state["selected_school_list"] = []
+        st.session_state["analysis_started"] = False
+        st.rerun()
 
-                info = school_info[selected]
+    if st.button(
+        "🍰 선택한 학교 분석하기",
+        use_container_width=True
+    ):
+        st.session_state["analysis_started"] = True
+        st.rerun()
 
-                with selected_cols[
-                    i % len(selected_cols)
-                ]:
-
-                    st.markdown(
-                        f"""
-                        <div class="card">
-                            <h3>🍰 {info["name"]}</h3>
-                            <p>🍓 지역: {info["location"]}</p>
-                            <p>🍮 학교 종류: {info["school_kind"]}</p>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-            # -------------------------------------------------
-            # 분석 버튼
-            # -------------------------------------------------
-
-            if st.button(
-                "🍰 선택한 학교 분석하기",
-                use_container_width=True
-            ):
-
-                st.session_state[
-                    "analysis_started"
-                ] = True
-
-                st.session_state[
-                    "selected_schools_data"
-                ] = selected_schools
 
 # =========================================================
 # 분석
 # =========================================================
 
-if st.session_state.get(
-    "analysis_started",
-    False
-):
+if st.session_state.get("analysis_started", False):
 
-    selected_schools = st.session_state.get(
-        "selected_schools_data",
-        []
+    selected_school_list = st.session_state.get(
+        "selected_school_list", []
     )
 
-    if not selected_schools:
-
-        st.warning(
-            "🍪 학교를 먼저 선택해주세요."
-        )
-
+    if not selected_school_list:
+        st.warning("🍪 학교를 먼저 선택해주세요.")
         st.stop()
-
-    # 현재 검색 결과에서 정보 다시 만들기
-    school_df = search_schools(
-        school_name_input.strip()
-    )
-
-    school_info = {}
-
-    for _, row in school_df.iterrows():
-
-        name = str(
-            row.get(
-                "SCHUL_NM",
-                ""
-            )
-        )
-
-        location = str(
-            row.get(
-                "LCTN_SC_NM",
-                ""
-            )
-        )
-
-        school_kind = str(
-            row.get(
-                "SCHUL_KND_SC_NM",
-                ""
-            )
-        )
-
-        display = (
-            f"{name} | "
-            f"{location} | "
-            f"{school_kind}"
-        )
-
-        school_info[display] = {
-            "name": name,
-            "location": location,
-            "school_kind": school_kind,
-            "office_code": str(
-                row.get(
-                    "ATPT_OFCDC_SC_CODE",
-                    ""
-                )
-            ),
-            "school_code": str(
-                row.get(
-                    "SD_SCHUL_CODE",
-                    ""
-                )
-            )
-        }
 
     # -----------------------------------------------------
     # 학교별 데이터 가져오기
+    # -----------------------------------------------------
+
     # -----------------------------------------------------
 
     results = []
 
     progress = st.progress(0)
 
-    for i, selected in enumerate(
-        selected_schools
+    for i, info in enumerate(
+        selected_school_list
     ):
-
-        info = school_info.get(
-            selected
-        )
-
-        if info is None:
-            continue
 
         st.write(
             f"🍓 {info['name']} 급식을 분석하고 있어요..."
@@ -737,7 +643,7 @@ if st.session_state.get(
         results.append(result)
 
         progress.progress(
-            (i + 1) / len(selected_schools)
+            (i + 1) / len(selected_school_list)
         )
 
     progress.empty()
