@@ -1,31 +1,29 @@
+```python
 import streamlit as st
 import pandas as pd
 import requests
 import re
 from collections import Counter
-from datetime import date, timedelta
 import plotly.express as px
-
+from datetime import date, timedelta
 
 # =========================================================
-# 기본 설정
+# 🍰 기본 설정
 # =========================================================
 
 st.set_page_config(
     page_title="🍰 급식 디저트 연구소",
-    page_icon="🍓",
+    page_icon="🍰",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-
 # =========================================================
-# 디자인
+# 🍓 CSS
 # =========================================================
 
 st.markdown("""
 <style>
-
 @import url('https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
 
 html, body, [class*="css"] {
@@ -33,211 +31,191 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: linear-gradient(
-        135deg,
-        #fff5fa 0%,
-        #fff9f3 50%,
-        #fff0f7 100%
-    );
+    background: linear-gradient(180deg, #fff7fb 0%, #fffdf8 100%);
 }
 
-/* 제목 */
+h1, h2, h3 {
+    font-family: 'Jua', sans-serif;
+}
+
 .main-title {
     text-align: center;
-    padding: 25px 10px 10px 10px;
-}
-
-.main-title h1 {
     font-family: 'Jua', sans-serif;
-    color: #e75480;
     font-size: 48px;
+    color: #e75480;
+    margin-top: 10px;
     margin-bottom: 5px;
 }
 
-.main-title p {
-    color: #9c6475;
+.sub-title {
+    text-align: center;
+    color: #9b6879;
     font-size: 18px;
+    margin-bottom: 30px;
 }
 
-/* 카드 */
-.info-card {
-    background: rgba(255,255,255,0.9);
-    border: 2px solid #ffd6e5;
-    border-radius: 22px;
+.dessert-card {
+    background: white;
+    border-radius: 20px;
     padding: 22px;
-    margin: 10px 0;
-    box-shadow: 0 6px 18px rgba(231,84,128,0.08);
+    margin-bottom: 15px;
+    box-shadow: 0 5px 18px rgba(220, 130, 160, 0.12);
+    border: 1px solid #ffe1eb;
 }
 
-.result-card {
-    background: linear-gradient(
-        135deg,
-        #ffffff,
-        #fff3f8
-    );
-    border: 2px solid #ffc8dc;
-    border-radius: 22px;
+.dessert-card h3 {
+    color: #e75480;
+    margin-bottom: 8px;
+}
+
+.stat-box {
+    background: linear-gradient(135deg, #fff0f6, #fff8e9);
+    border-radius: 18px;
     padding: 20px;
     text-align: center;
-    box-shadow: 0 7px 20px rgba(231,84,128,0.10);
+    border: 1px solid #ffdce8;
 }
 
-.result-card h3 {
-    color: #d94b78;
-    margin-bottom: 10px;
-}
-
-.result-number {
-    font-size: 36px;
+.stat-number {
+    font-size: 32px;
     font-weight: 900;
     color: #e75480;
 }
 
-.dessert-name {
-    font-size: 20px;
-    font-weight: 700;
-    color: #7c4a5c;
+.stat-label {
+    color: #8f6574;
+    font-size: 14px;
 }
 
-.section-title {
-    font-family: 'Jua', sans-serif;
-    color: #d94b78;
-    font-size: 30px;
-    margin-top: 25px;
-}
-
-div.stButton > button {
-    background: linear-gradient(
-        90deg,
-        #ff8fb3,
-        #ffb6c9
-    );
-    color: white;
-    border: none;
+.stButton > button {
     border-radius: 15px;
+    border: none;
+    background-color: #f58aaa;
+    color: white;
     font-weight: 700;
-    padding: 10px 22px;
 }
 
-div.stButton > button:hover {
-    background: linear-gradient(
-        90deg,
-        #e75480,
-        #ff8fb3
-    );
+.stButton > button:hover {
+    background-color: #e76f95;
     color: white;
 }
 
 [data-testid="stSidebar"] {
-    background: #fff0f6;
+    background: linear-gradient(180deg, #fff0f6, #fffaf1);
 }
 
+.school-select-box {
+    background: #fff;
+    border: 2px solid #ffd7e4;
+    border-radius: 18px;
+    padding: 15px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-
 # =========================================================
-# 제목
+# 🍮 API 설정
 # =========================================================
 
-st.markdown("""
-<div class="main-title">
-    <h1>🍰 급식 디저트 연구소 🍓</h1>
-    <p>학교마다 어떤 디저트가 가장 많이 나올까? 🧁</p>
-</div>
-""", unsafe_allow_html=True)
-
-
-# =========================================================
-# API KEY
-# =========================================================
+BASE_URL = "https://open.neis.go.kr/hub"
 
 try:
     API_KEY = st.secrets["NEIS_API_KEY"]
 except Exception:
     API_KEY = ""
 
-
-if not API_KEY:
-    st.warning(
-        "🔑 NEIS API 인증키가 설정되지 않았어요. "
-        "Streamlit Cloud의 Secrets에 NEIS_API_KEY를 입력해주세요."
-    )
-
-
-BASE_URL = "https://open.neis.go.kr/hub"
-
-
 # =========================================================
-# 디저트 키워드
+# 🍪 디저트 키워드
 # =========================================================
 
 DESSERT_KEYWORDS = [
+    # 아이스크림 / 유제품
     "아이스크림",
     "아이스",
-    "요구르트",
     "요거트",
+    "요구르트",
     "우유",
-    "초코우유",
     "딸기우유",
+    "초코우유",
     "바나나우유",
+
+    # 음료
     "주스",
     "쥬스",
     "음료",
-    "푸딩",
-    "젤리",
+    "차",
+    "에이드",
+    "스무디",
+
+    # 빵 / 과자
+    "빵",
     "케이크",
-    "롤케이크",
-    "카스텔라",
-    "카스테라",
+    "케익",
     "쿠키",
     "마카롱",
     "도넛",
     "도너츠",
     "머핀",
+    "파이",
     "와플",
     "팬케이크",
-    "핫케이크",
-    "파이",
-    "타르트",
-    "과일",
-    "사과",
-    "배",
-    "귤",
-    "오렌지",
-    "바나나",
-    "포도",
-    "딸기",
-    "수박",
-    "참외",
-    "복숭아",
-    "키위",
-    "멜론",
-    "방울토마토",
-    "토마토",
-    "찐옥수수",
-    "옥수수",
+    "카스테라",
+    "크로플",
+
+    # 떡 / 전통 디저트
     "떡",
-    "인절미",
-    "꿀떡",
-    "송편",
     "약과",
     "한과",
-    "팥빙수",
-    "빙수",
+    "유과",
+    "찹쌀떡",
+    "인절미",
+
+    # 디저트
+    "푸딩",
+    "젤리",
+    "젤라틴",
     "초콜릿",
     "초코",
+    "사탕",
+
+    # 과일
+    "딸기",
+    "사과",
+    "배",
+    "포도",
+    "귤",
+    "오렌지",
+    "수박",
+    "참외",
+    "바나나",
+    "키위",
+    "복숭아",
+    "파인애플",
+    "망고",
+    "멜론",
+    "블루베리",
+    "과일",
+    "방울토마토"
 ]
 
+# =========================================================
+# 🍓 API 오류 메시지
+# =========================================================
+
+def show_api_error():
+    st.error(
+        "🍰 NEIS API에서 데이터를 가져오지 못했어요.\n\n"
+        "스트림릿 Secrets에 `NEIS_API_KEY`가 제대로 등록되어 있는지 확인해주세요."
+    )
 
 # =========================================================
-# 학교 검색
+# 🧁 학교 검색
 # =========================================================
 
 @st.cache_data(ttl=3600)
 def search_schools(school_name):
 
-    if not API_KEY or not school_name.strip():
+    if not API_KEY:
         return pd.DataFrame()
 
     url = f"{BASE_URL}/schoolInfo"
@@ -258,38 +236,29 @@ def search_schools(school_name):
         )
 
         response.raise_for_status()
-
         data = response.json()
 
         if "schoolInfo" not in data:
             return pd.DataFrame()
 
-        rows = data["schoolInfo"][1]["row"]
+        if len(data["schoolInfo"]) < 2:
+            return pd.DataFrame()
+
+        rows = data["schoolInfo"][1].get("row", [])
+
+        if not rows:
+            return pd.DataFrame()
 
         df = pd.DataFrame(rows)
 
-        wanted_columns = [
-            "ATPT_OFCDC_SC_CODE",
-            "ATPT_OFCDC_SC_NM",
-            "SD_SCHUL_CODE",
-            "SCHUL_NM",
-            "SCHUL_KND_SC_NM",
-            "LCTN_SC_NM"
-        ]
-
-        existing = [
-            col for col in wanted_columns
-            if col in df.columns
-        ]
-
-        return df[existing]
+        return df
 
     except Exception:
         return pd.DataFrame()
 
 
 # =========================================================
-# 급식 데이터 가져오기
+# 🍩 급식 데이터 가져오기
 # =========================================================
 
 @st.cache_data(ttl=1800)
@@ -310,8 +279,10 @@ def get_meal_data(
         "Type": "json",
         "pIndex": 1,
         "pSize": 1000,
+
         "ATPT_OFCDC_SC_CODE": office_code,
         "SD_SCHUL_CODE": school_code,
+
         "MLSV_FROM_YMD": start_date,
         "MLSV_TO_YMD": end_date
     }
@@ -330,7 +301,13 @@ def get_meal_data(
         if "mealServiceDietInfo" not in data:
             return pd.DataFrame()
 
-        rows = data["mealServiceDietInfo"][1]["row"]
+        if len(data["mealServiceDietInfo"]) < 2:
+            return pd.DataFrame()
+
+        rows = data["mealServiceDietInfo"][1].get("row", [])
+
+        if not rows:
+            return pd.DataFrame()
 
         return pd.DataFrame(rows)
 
@@ -339,283 +316,507 @@ def get_meal_data(
 
 
 # =========================================================
-# 메뉴 분리
+# 🍰 메뉴 나누기
 # =========================================================
 
 def split_menu(menu_text):
 
-    if not isinstance(menu_text, str):
+    if pd.isna(menu_text):
         return []
 
-    # <br/> 등 HTML 제거
-    menu_text = re.sub(
+    text = str(menu_text)
+
+    # <br/> 제거
+    text = re.sub(
         r"<br\s*/?>",
         "\n",
-        menu_text,
+        text,
         flags=re.IGNORECASE
     )
 
     # 알레르기 번호 제거
-    menu_text = re.sub(
+    text = re.sub(
         r"\([0-9,\.\s]+\)",
         "",
-        menu_text
+        text
     )
 
-    # 특수문자를 기준으로 분리
+    # 줄바꿈 / 쉼표 / 세미콜론 / 슬래시 기준 분리
     items = re.split(
         r"[\n,;/]+",
-        menu_text
+        text
     )
 
-    cleaned = []
+    result = []
 
     for item in items:
 
         item = item.strip()
 
         if item:
-            cleaned.append(item)
+            result.append(item)
 
-    return cleaned
+    return result
 
 
 # =========================================================
-# 디저트 판별
+# 🍓 디저트 찾기
 # =========================================================
 
 def find_desserts(menu_text):
 
-    menus = split_menu(menu_text)
+    menu_items = split_menu(menu_text)
 
     desserts = []
 
-    for menu in menus:
+    for item in menu_items:
 
-        menu_without_space = menu.replace(" ", "")
+        clean_item = (
+            item
+            .replace(" ", "")
+            .lower()
+        )
 
         for keyword in DESSERT_KEYWORDS:
 
-            if keyword in menu_without_space:
+            keyword_clean = (
+                keyword
+                .replace(" ", "")
+                .lower()
+            )
 
-                desserts.append(menu)
+            if keyword_clean in clean_item:
 
+                desserts.append(item)
                 break
 
     return desserts
 
 
 # =========================================================
-# 학교별 분석
+# 🍮 학교별 디저트 분석
 # =========================================================
 
 def analyze_school(
-    school_info,
-    start_date,
-    end_date
+    school_name,
+    meal_df
 ):
 
-    office_code = school_info["ATPT_OFCDC_SC_CODE"]
-    school_code = school_info["SD_SCHUL_CODE"]
-    school_name = school_info["SCHUL_NM"]
+    if meal_df.empty:
 
-    df = get_meal_data(
-        office_code,
-        school_code,
-        start_date,
-        end_date
-    )
-
-    if df.empty:
         return {
-            "school": school_name,
-            "meal_data": pd.DataFrame(),
+            "school_name": school_name,
             "desserts": [],
-            "counter": Counter()
+            "counter": Counter(),
+            "total": 0,
+            "top_dessert": "-",
+            "top_count": 0
         }
 
-    all_desserts = []
+    dessert_list = []
 
-    for _, row in df.iterrows():
+    for _, row in meal_df.iterrows():
 
-        menu = row.get("DDISH_NM", "")
+        menu = row.get(
+            "DDISH_NM",
+            ""
+        )
 
         desserts = find_desserts(menu)
 
-        all_desserts.extend(desserts)
+        for dessert in desserts:
 
-    counter = Counter(all_desserts)
+            dessert_list.append(
+                dessert
+            )
+
+    counter = Counter(
+        dessert_list
+    )
+
+    if counter:
+
+        top_dessert, top_count = (
+            counter.most_common(1)[0]
+        )
+
+    else:
+
+        top_dessert = "-"
+        top_count = 0
 
     return {
-        "school": school_name,
-        "meal_data": df,
-        "desserts": all_desserts,
-        "counter": counter
+        "school_name": school_name,
+        "desserts": dessert_list,
+        "counter": counter,
+        "total": len(dessert_list),
+        "top_dessert": top_dessert,
+        "top_count": top_count
     }
 
 
 # =========================================================
-# 사이드바
+# 🍰 제목
+# =========================================================
+
+st.markdown(
+    '<div class="main-title">🍰 급식 디저트 연구소 🍓</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="sub-title">'
+    '학교별 급식 디저트를 찾아보고 비교해보는 데이터 분석 앱 🍮'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+# =========================================================
+# 🍪 API 키 확인
+# =========================================================
+
+if not API_KEY:
+
+    st.error(
+        "🍰 NEIS_API_KEY가 설정되지 않았어요!"
+    )
+
+    st.info(
+        "스트림릿 Cloud의 Settings → Secrets에 "
+        "`NEIS_API_KEY = \"발급받은키\"` 형식으로 입력해주세요."
+    )
+
+    st.stop()
+
+
+# =========================================================
+# 🍓 사이드바
 # =========================================================
 
 with st.sidebar:
 
-    st.markdown("## 🍓 분석 설정")
+    st.markdown(
+        "## 🍰 디저트 분석 설정"
+    )
 
     st.markdown(
-        "### 🏫 학교 찾기"
+        "---"
     )
 
-    school_search = st.text_input(
-        "학교명을 입력하세요",
-        placeholder="예: 서울고등학교"
+    st.markdown(
+        "### 🍓 분석 기간"
     )
 
-    if st.button(
-        "🔍 학교 검색",
-        use_container_width=True
-    ):
+    today = date.today()
 
-        if school_search.strip():
+    default_start = today - timedelta(days=30)
 
-            with st.spinner("🏫 학교를 찾고 있어요..."):
-
-                school_df = search_schools(
-                    school_search
-                )
-
-            if school_df.empty:
-
-                st.error(
-                    "😢 학교를 찾지 못했어요."
-                )
-
-            else:
-
-                st.session_state["school_results"] = school_df
-
-                st.success(
-                    f"🍰 {len(school_df)}개의 학교를 찾았어요!"
-                )
-
-    st.markdown("---")
-
-    st.markdown("### 📅 분석 기간")
-
-    default_start = date.today() - timedelta(days=90)
-
-    start_date = st.date_input(
-        "시작일",
+    start = st.date_input(
+        "시작 날짜",
         value=default_start
     )
 
-    end_date = st.date_input(
-        "종료일",
-        value=date.today()
+    end = st.date_input(
+        "끝 날짜",
+        value=today
     )
 
     st.markdown("---")
 
-    st.markdown("""
-    ### 💗 분석 방법
+    st.markdown(
+        "### 🍮 분석 방법"
+    )
 
-    급식 메뉴 중 미리 정한 디저트
-    키워드에 해당하는 메뉴를 찾아서
+    st.write(
+        "급식 메뉴에 디저트 관련 키워드가 "
+        "포함되어 있는지를 기준으로 분석합니다."
+    )
 
-    🍰 제공 횟수  
-    🏆 가장 많이 나온 디저트  
-    📊 학교별 차이
+    st.markdown("---")
 
-    를 비교합니다.
-    """)
+    st.caption(
+        "🍰 NEIS 학교급식 데이터를 이용합니다."
+    )
 
 
 # =========================================================
-# 학교 선택
+# 🍩 날짜 오류 확인
 # =========================================================
 
-if "school_results" not in st.session_state:
+if start > end:
 
-    st.markdown("""
-    <div class="info-card">
-
-    <h2>🍓 먼저 학교를 검색해주세요!</h2>
-
-    <p>
-    왼쪽에서 학교 이름을 검색하면<br>
-    여러 학교를 선택해서 디저트 제공 빈도를 비교할 수 있어요. 🧁
-    </p>
-
-    </div>
-    """, unsafe_allow_html=True)
+    st.warning(
+        "🍪 시작 날짜가 끝 날짜보다 늦어요. 날짜를 다시 선택해주세요."
+    )
 
     st.stop()
 
 
-school_df = st.session_state["school_results"].copy()
-
-
-# 학교 선택용 표시 이름
-school_options = {}
-
-for _, row in school_df.iterrows():
-
-    name = row["SCHUL_NM"]
-
-    location = row.get(
-        "LCTN_SC_NM",
-        ""
-    )
-
-    kind = row.get(
-        "SCHUL_KND_SC_NM",
-        ""
-    )
-
-    label = f"{name} · {location} · {kind}"
-
-    school_options[label] = row.to_dict()
-
+# =========================================================
+# 🧁 학교 검색
+# =========================================================
 
 st.markdown(
-    '<div class="section-title">🏫 비교할 학교를 골라주세요</div>',
-    unsafe_allow_html=True
+    "## 🍓 1. 학교 검색"
 )
 
-selected_labels = st.multiselect(
-    "여러 학교를 선택할 수 있어요.",
-    options=list(school_options.keys()),
-    max_selections=6,
-    placeholder="학교를 선택하세요 🍰"
+search_text = st.text_input(
+    "학교 이름을 입력하세요",
+    placeholder="예: 서울고, 경기고, 한빛고",
+    key="school_search"
 )
 
+if search_text.strip():
 
-if not selected_labels:
+    with st.spinner("🍰 학교를 찾고 있어요..."):
 
-    st.info(
-        "👆 최소 1개의 학교를 선택해주세요."
-    )
+        school_df = search_schools(
+            search_text
+        )
 
-    st.stop()
+    if school_df.empty:
 
+        st.warning(
+            "🍪 검색 결과가 없어요. 학교 이름을 다시 입력해주세요."
+        )
 
-if start_date > end_date:
+    else:
 
-    st.error(
-        "⚠️ 시작일이 종료일보다 늦을 수 없어요."
-    )
+        st.success(
+            f"🍓 {len(school_df)}개의 학교를 찾았어요!"
+        )
 
-    st.stop()
+        # -------------------------------------------------
+        # 학교 선택용 정보 만들기
+        # -------------------------------------------------
+
+        school_options = []
+
+        school_mapping = {}
+
+        for index, row in school_df.iterrows():
+
+            school_name = str(
+                row.get(
+                    "SCHUL_NM",
+                    ""
+                )
+            )
+
+            office_name = str(
+                row.get(
+                    "ATPT_OFCDC_SC_NM",
+                    ""
+                )
+            )
+
+            school_kind = str(
+                row.get(
+                    "SCHUL_KND_SC_NM",
+                    ""
+                )
+            )
+
+            location = str(
+                row.get(
+                    "LCTN_SC_NM",
+                    ""
+                )
+            )
+
+            office_code = str(
+                row.get(
+                    "ATPT_OFCDC_SC_CODE",
+                    ""
+                )
+            )
+
+            school_code = str(
+                row.get(
+                    "SD_SCHUL_CODE",
+                    ""
+                )
+            )
+
+            # 같은 이름의 학교가 있을 수 있으므로
+            # 지역 + 학교종류를 같이 표시
+            display_name = (
+                f"{school_name} "
+                f"· {location} "
+                f"· {school_kind}"
+            )
+
+            school_options.append(
+                display_name
+            )
+
+            school_mapping[
+                display_name
+            ] = {
+                "school_name": school_name,
+                "office_name": office_name,
+                "school_kind": school_kind,
+                "location": location,
+                "office_code": office_code,
+                "school_code": school_code
+            }
+
+        # -------------------------------------------------
+        # 🍰 핵심: 여러 학교 선택
+        # -------------------------------------------------
+
+        st.markdown(
+            "### 🍰 비교할 학교를 선택하세요"
+        )
+
+        st.caption(
+            "🍓 여러 학교를 선택하면 학교별 디저트 빈도를 한 번에 비교할 수 있어요. "
+            "최대 6개까지 선택할 수 있습니다."
+        )
+
+        selected_display_names = st.multiselect(
+            "학교 선택",
+            options=school_options,
+            max_selections=6,
+            placeholder="비교할 학교를 여러 개 선택하세요 🍰",
+            key="selected_schools"
+        )
+
+        # -------------------------------------------------
+        # 선택 결과
+        # -------------------------------------------------
+
+        if selected_display_names:
+
+            st.markdown(
+                "### 🍮 선택한 학교"
+            )
+
+            cols = st.columns(
+                min(len(selected_display_names), 3)
+            )
+
+            for i, selected in enumerate(
+                selected_display_names
+            ):
+
+                info = school_mapping[
+                    selected
+                ]
+
+                with cols[i % len(cols)]:
+
+                    st.markdown(
+                        f"""
+                        <div class="dessert-card">
+                            <h3>🍰 {info["school_name"]}</h3>
+                            <p>🍓 {info["location"]}</p>
+                            <p>🍮 {info["school_kind"]}</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+            # -------------------------------------------------
+            # 분석 버튼
+            # -------------------------------------------------
+
+            st.markdown("---")
+
+            if st.button(
+                "🍰 선택한 학교 디저트 분석하기",
+                use_container_width=True
+            ):
+
+                st.session_state[
+                    "run_analysis"
+                ] = True
 
 
 # =========================================================
-# 분석 시작
+# 🍓 분석 실행
 # =========================================================
 
-if st.button(
-    "🍰 디저트 분석 시작!",
-    use_container_width=True
+if st.session_state.get(
+    "run_analysis",
+    False
 ):
+
+    selected_display_names = st.session_state.get(
+        "selected_schools",
+        []
+    )
+
+    if not selected_display_names:
+
+        st.warning(
+            "🍪 먼저 비교할 학교를 선택해주세요!"
+        )
+
+        st.stop()
+
+    # -----------------------------------------------------
+    # 현재 검색 결과 다시 가져오기
+    # -----------------------------------------------------
+
+    school_df = search_schools(
+        search_text
+    )
+
+    school_mapping = {}
+
+    for _, row in school_df.iterrows():
+
+        school_name = str(
+            row.get(
+                "SCHUL_NM",
+                ""
+            )
+        )
+
+        location = str(
+            row.get(
+                "LCTN_SC_NM",
+                ""
+            )
+        )
+
+        school_kind = str(
+            row.get(
+                "SCHUL_KND_SC_NM",
+                ""
+            )
+        )
+
+        display_name = (
+            f"{school_name} "
+            f"· {location} "
+            f"· {school_kind}"
+        )
+
+        school_mapping[
+            display_name
+        ] = {
+            "school_name": school_name,
+            "office_code": str(
+                row.get(
+                    "ATPT_OFCDC_SC_CODE",
+                    ""
+                )
+            ),
+            "school_code": str(
+                row.get(
+                    "SD_SCHUL_CODE",
+                    ""
+                )
+            ),
+            "location": location,
+            "school_kind": school_kind
+        }
+
+    # -----------------------------------------------------
+    # 🍰 학교별 분석
+    # -----------------------------------------------------
 
     results = []
 
@@ -623,301 +824,512 @@ if st.button(
 
     status = st.empty()
 
-    for index, label in enumerate(selected_labels):
+    total_schools = len(
+        selected_display_names
+    )
 
-        school_info = school_options[label]
+    for i, display_name in enumerate(
+        selected_display_names
+    ):
+
+        info = school_mapping.get(
+            display_name
+        )
+
+        if not info:
+            continue
 
         status.info(
-            f"🧁 {school_info['SCHUL_NM']}의 급식을 분석하고 있어요..."
+            f"🍓 {info['school_name']}의 급식을 분석하고 있어요..."
         )
 
-        result = analyze_school(
-            school_info,
-            start_date.strftime("%Y%m%d"),
-            end_date.strftime("%Y%m%d")
+        meal_df = get_meal_data(
+            info["office_code"],
+            info["school_code"],
+            start.strftime("%Y%m%d"),
+            end.strftime("%Y%m%d")
         )
 
-        results.append(result)
+        analysis = analyze_school(
+            info["school_name"],
+            meal_df
+        )
+
+        analysis[
+            "location"
+        ] = info["location"]
+
+        analysis[
+            "school_kind"
+        ] = info["school_kind"]
+
+        results.append(
+            analysis
+        )
 
         progress.progress(
-            (index + 1) / len(selected_labels)
+            (i + 1) / total_schools
         )
 
-    status.success(
-        "🎉 분석이 완료됐어요!"
+    status.empty()
+    progress.empty()
+
+    # -----------------------------------------------------
+    # 분석 결과 없음
+    # -----------------------------------------------------
+
+    if not results:
+
+        st.error(
+            "🍪 분석할 학교 데이터를 찾지 못했어요."
+        )
+
+        st.stop()
+
+    # =====================================================
+    # 🍮 분석 결과
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🍰 분석 결과"
     )
 
-    st.session_state["analysis_results"] = results
-
-    st.balloons()
-
-
-# =========================================================
-# 결과 출력
-# =========================================================
-
-if "analysis_results" not in st.session_state:
-
-    st.info(
-        "🍓 위의 **디저트 분석 시작!** 버튼을 눌러주세요."
+    st.markdown(
+        f"### 🍓 {start.strftime('%Y-%m-%d')} ~ "
+        f"{end.strftime('%Y-%m-%d')}"
     )
 
-    st.stop()
+    # =====================================================
+    # 🍩 전체 통계 카드
+    # =====================================================
 
+    total_desserts = sum(
+        result["total"]
+        for result in results
+    )
 
-results = st.session_state["analysis_results"]
+    most_dessert_school = max(
+        results,
+        key=lambda x: x["total"]
+    )
 
+    cols = st.columns(3)
 
-# =========================================================
-# 결과 데이터 만들기
-# =========================================================
-
-summary_rows = []
-
-for result in results:
-
-    counter = result["counter"]
-
-    total_count = sum(counter.values())
-
-    if counter:
-
-        top_dessert, top_count = counter.most_common(1)[0]
-
-    else:
-
-        top_dessert = "없음"
-        top_count = 0
-
-    summary_rows.append({
-        "학교": result["school"],
-        "디저트 제공 횟수": total_count,
-        "가장 많이 나온 디저트": top_dessert,
-        "최다 제공 횟수": top_count
-    })
-
-
-summary_df = pd.DataFrame(summary_rows)
-
-
-# =========================================================
-# 전체 결과
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">🍰 학교별 분석 결과</div>',
-    unsafe_allow_html=True
-)
-
-
-# 결과 카드
-columns = st.columns(len(summary_df))
-
-
-for col, (_, row) in zip(
-    columns,
-    summary_df.iterrows()
-):
-
-    with col:
+    with cols[0]:
 
         st.markdown(
             f"""
-            <div class="result-card">
-
-            <h3>🏫 {row['학교']}</h3>
-
-            <div class="result-number">
-                {row['디저트 제공 횟수']}회
-            </div>
-
-            <p>🍰 디저트 제공</p>
-
-            <div class="dessert-name">
-                🏆 {row['가장 많이 나온 디저트']}
-            </div>
-
-            <p>
-                가장 많이 나온 디저트<br>
-                <b>{row['최다 제공 횟수']}회</b>
-            </p>
-
+            <div class="stat-box">
+                <div class="stat-number">
+                    {len(results)}
+                </div>
+                <div class="stat-label">
+                    🍰 분석한 학교 수
+                </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
+    with cols[1]:
 
-# =========================================================
-# 학교별 빈도 비교
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">📊 학교별 디저트 제공 횟수 비교</div>',
-    unsafe_allow_html=True
-)
-
-
-chart_df = summary_df.sort_values(
-    "디저트 제공 횟수",
-    ascending=False
-)
-
-
-fig = px.bar(
-    chart_df,
-    x="학교",
-    y="디저트 제공 횟수",
-    text="디저트 제공 횟수",
-    title="🍰 학교별 디저트 제공 횟수",
-    labels={
-        "학교": "학교",
-        "디저트 제공 횟수": "제공 횟수"
-    }
-)
-
-fig.update_traces(
-    textposition="outside",
-    marker_color="#F58BA8"
-)
-
-fig.update_layout(
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    font=dict(
-        family="Noto Sans KR",
-        size=14
-    ),
-    title_font_size=22,
-    title_font_color="#D94B78",
-    xaxis_title="학교",
-    yaxis_title="디저트 제공 횟수",
-    hovermode="x unified"
-)
-
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-
-# =========================================================
-# 학교별 최다 디저트
-# =========================================================
-
-st.markdown(
-    '<div class="section-title">🏆 학교별 인기 디저트</div>',
-    unsafe_allow_html=True
-)
-
-
-for result in results:
-
-    counter = result["counter"]
-
-    if not counter:
-
-        st.warning(
-            f"😢 {result['school']}에서는 "
-            "분류된 디저트를 찾지 못했어요."
+        st.markdown(
+            f"""
+            <div class="stat-box">
+                <div class="stat-number">
+                    {total_desserts}
+                </div>
+                <div class="stat-label">
+                    🍓 전체 디저트 등장 횟수
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
-        continue
+    with cols[2]:
 
-    top_items = counter.most_common(10)
+        st.markdown(
+            f"""
+            <div class="stat-box">
+                <div class="stat-number">
+                    {most_dessert_school["school_name"]}
+                </div>
+                <div class="stat-label">
+                    🍮 디저트가 가장 많이 나온 학교
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    dessert_df = pd.DataFrame(
-        top_items,
-        columns=[
-            "디저트",
-            "제공 횟수"
-        ]
-    )
+    # =====================================================
+    # 🍰 학교별 디저트 빈도 비교
+    # =====================================================
+
+    st.markdown("---")
 
     st.markdown(
-        f"### 🏫 {result['school']}"
+        "## 🍰 학교별 디저트 등장 횟수 비교"
     )
 
-    top_name, top_count = top_items[0]
+    comparison_data = []
 
-    st.success(
-        f"🥇 가장 많이 나온 디저트는 "
-        f"**{top_name}** — **{top_count}회**예요!"
+    for result in results:
+
+        comparison_data.append(
+            {
+                "학교": result[
+                    "school_name"
+                ],
+                "디저트 등장 횟수": result[
+                    "total"
+                ]
+            }
+        )
+
+    comparison_df = pd.DataFrame(
+        comparison_data
     )
 
-    fig2 = px.bar(
-        dessert_df,
-        x="제공 횟수",
-        y="디저트",
-        orientation="h",
-        text="제공 횟수",
-        title=f"🍩 {result['school']} 디저트 TOP 10",
+    fig = px.bar(
+        comparison_df,
+        x="학교",
+        y="디저트 등장 횟수",
+        text="디저트 등장 횟수",
+        title="🍓 학교별 디저트 등장 횟수",
         labels={
-            "제공 횟수": "제공 횟수",
-            "디저트": "디저트"
+            "학교": "학교",
+            "디저트 등장 횟수": "등장 횟수"
         }
     )
 
-    fig2.update_traces(
-        textposition="outside",
-        marker_color="#FFB6C9"
+    fig.update_traces(
+        textposition="outside"
     )
 
-    fig2.update_layout(
+    fig.update_layout(
+        height=500,
+        showlegend=False,
         plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(
-            family="Noto Sans KR",
-            size=13
-        ),
-        title_font_color="#D94B78",
-        yaxis={
-            "categoryorder": "total ascending"
-        }
+        paper_bgcolor="rgba(0,0,0,0)"
     )
 
     st.plotly_chart(
-        fig2,
+        fig,
         use_container_width=True
+    )
+
+    # =====================================================
+    # 🍮 학교별 TOP 디저트
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🍮 학교별 가장 많이 나온 디저트"
+    )
+
+    top_data = []
+
+    for result in results:
+
+        if result["counter"]:
+
+            top_desserts = (
+                result["counter"]
+                .most_common(10)
+            )
+
+            for dessert, count in top_desserts:
+
+                top_data.append(
+                    {
+                        "학교": result[
+                            "school_name"
+                        ],
+                        "디저트": dessert,
+                        "횟수": count
+                    }
+                )
+
+    if top_data:
+
+        top_df = pd.DataFrame(
+            top_data
+        )
+
+        fig_top = px.bar(
+            top_df,
+            x="횟수",
+            y="디저트",
+            color="학교",
+            orientation="h",
+            title="🍓 학교별 디저트 TOP 10",
+            labels={
+                "횟수": "등장 횟수",
+                "디저트": "디저트"
+            }
+        )
+
+        fig_top.update_layout(
+            height=max(
+                500,
+                len(top_df) * 25
+            ),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
+        )
+
+        st.plotly_chart(
+            fig_top,
+            use_container_width=True
+        )
+
+    # =====================================================
+    # 🧁 학교별 1위 디저트 카드
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🧁 학교별 디저트 1위"
+    )
+
+    result_cols = st.columns(
+        min(len(results), 3)
+    )
+
+    for i, result in enumerate(
+        results
+    ):
+
+        with result_cols[
+            i % len(result_cols)
+        ]:
+
+            if result["top_dessert"] != "-":
+
+                st.markdown(
+                    f"""
+                    <div class="dessert-card">
+                        <h3>🍰 {result["school_name"]}</h3>
+
+                        <p>
+                            🍓 가장 많이 나온 디저트
+                        </p>
+
+                        <h2 style="color:#e75480;">
+                            🍮 {result["top_dessert"]}
+                        </h2>
+
+                        <p>
+                            등장 횟수:
+                            <strong>
+                                {result["top_count"]}회
+                            </strong>
+                        </p>
+
+                        <p>
+                            전체 디저트:
+                            <strong>
+                                {result["total"]}회
+                            </strong>
+                        </p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            else:
+
+                st.markdown(
+                    f"""
+                    <div class="dessert-card">
+                        <h3>🍰 {result["school_name"]}</h3>
+                        <p>🍪 분석 기간에 디저트가 발견되지 않았어요.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    # =====================================================
+    # 🍓 상세 데이터 표
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🍓 학교별 분석표"
+    )
+
+    summary_data = []
+
+    for result in results:
+
+        summary_data.append(
+            {
+                "학교": result[
+                    "school_name"
+                ],
+                "지역": result[
+                    "location"
+                ],
+                "학교 종류": result[
+                    "school_kind"
+                ],
+                "디저트 등장 횟수": result[
+                    "total"
+                ],
+                "가장 많이 나온 디저트": result[
+                    "top_dessert"
+                ],
+                "1위 등장 횟수": result[
+                    "top_count"
+                ]
+            }
+        )
+
+    summary_df = pd.DataFrame(
+        summary_data
+    )
+
+    st.dataframe(
+        summary_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # =====================================================
+    # 🍰 디저트별 상세 빈도
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🍰 학교별 디저트 상세 빈도"
+    )
+
+    for result in results:
+
+        st.markdown(
+            f"### 🍮 {result['school_name']}"
+        )
+
+        if result["counter"]:
+
+            detail_data = []
+
+            for dessert, count in (
+                result["counter"]
+                .most_common()
+            ):
+
+                detail_data.append(
+                    {
+                        "디저트": dessert,
+                        "등장 횟수": count
+                    }
+                )
+
+            detail_df = pd.DataFrame(
+                detail_data
+            )
+
+            st.dataframe(
+                detail_df,
+                use_container_width=True,
+                hide_index=True
+            )
+
+        else:
+
+            st.info(
+                "🍪 이 기간에는 디저트가 발견되지 않았어요."
+            )
+
+    # =====================================================
+    # 🍓 다운로드
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "## 🍓 분석 결과 저장"
+    )
+
+    csv_data = summary_df.to_csv(
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    st.download_button(
+        label="🍰 분석 결과 CSV 다운로드",
+        data=csv_data,
+        file_name="school_dessert_analysis.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+    # =====================================================
+    # 🍮 주의사항
+    # =====================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        """
+        <div class="dessert-card">
+
+        <h3>🍰 분석 방법 안내</h3>
+
+        <p>
+        이 앱은 NEIS 급식 메뉴에서 디저트와 관련된
+        단어를 찾아 디저트 등장 횟수를 계산합니다.
+        </p>
+
+        <p>
+        🍓 따라서 과일이나 우유처럼 학교에 따라
+        디저트로 분류할 수도 있고 반찬·식품으로
+        분류할 수도 있는 메뉴가 포함될 수 있습니다.
+        </p>
+
+        <p>
+        🍮 데이터 분석 결과는 설정한 기간과
+        NEIS에 등록된 급식 메뉴를 기준으로 합니다.
+        </p>
+
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 
 # =========================================================
-# 전체 비교표
+# 🍪 화면 하단
 # =========================================================
 
+st.markdown("---")
+
 st.markdown(
-    '<div class="section-title">📋 한눈에 보는 비교</div>',
+    """
+    <div style="text-align:center; color:#b27b8d;">
+        🍰🍓🍮 급식 속 디저트를 데이터로 만나보세요 🍮🍓🍰
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
-display_df = summary_df.copy()
-
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True
-)
-
-
 # =========================================================
-# 안내
+# 🍰 디저트 풍선 효과
 # =========================================================
 
-st.markdown("""
-<div class="info-card">
+if st.session_state.get(
+    "run_analysis",
+    False
+):
 
-### 🍓 분석할 때 알아두세요!
-
-이 웹앱은 급식 메뉴의 이름을 기준으로
-디저트를 분류합니다.
-
-예를 들어 `아이스크림`, `요구르트`, `과일`,
-`케이크`, `쿠키`, `우유` 등의 메뉴가
-디저트로 분류됩니다.
-
-따라서 학교에서 제공하는 메뉴 이름에 따라
-실제 디저트와 분류 결과가 조금 다를 수 있습니다. 🧁
-
-</div>
-""", unsafe_allow_html=True)
+    st.balloons()
+```
