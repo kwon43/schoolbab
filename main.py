@@ -116,57 +116,35 @@ st.markdown(
 # =========================================================
 
 DESSERT_KEYWORDS = [
-    "아이스크림",
-    "요거트",
-    "요구르트",
-    "우유",
-    "주스",
-    "쥬스",
-    "에이드",
-    "스무디",
+    # 음료/유제품
+    "우유", "딸기우유", "초코우유", "바나나우유",
+    "요거트", "요구르트", "주스", "쥬스", "에이드", "스무디",
 
-    "빵",
-    "케이크",
-    "케익",
-    "쿠키",
-    "마카롱",
-    "도넛",
-    "도너츠",
-    "머핀",
-    "파이",
-    "와플",
-    "카스테라",
-    "크로플",
+    # 빵/과자/후식
+    "빵", "케이크", "케익", "쿠키", "마카롱", "도넛", "도너츠",
+    "머핀", "파이", "와플", "카스테라", "크로플", "롤케이크",
+    "푸딩", "젤리", "초콜릿", "사탕", "약과", "한과", "유과",
+    "찹쌀떡", "인절미", "떡", "아이스크림",
 
-    "떡",
-    "약과",
-    "한과",
-    "유과",
-    "찹쌀떡",
-    "인절미",
-
-    "푸딩",
-    "젤리",
-    "초콜릿",
-    "사탕",
-
-    "딸기",
-    "사과",
-    "배",
-    "포도",
-    "귤",
-    "오렌지",
-    "수박",
-    "참외",
-    "바나나",
-    "키위",
-    "복숭아",
-    "파인애플",
-    "망고",
-    "멜론",
-    "블루베리",
-    "과일"
+    # 과일 후식
+    "딸기", "사과", "배", "포도", "귤", "오렌지", "수박", "참외",
+    "바나나", "키위", "복숭아", "파인애플", "망고", "멜론",
+    "블루베리", "과일"
 ]
+
+# 문자열에 우연히 들어간 단어 때문에 잘못 분류되지 않도록
+# '메뉴 전체가 실제 후식 형태인지'를 확인하는 보조 규칙입니다.
+NOT_DESSERT_KEYWORDS = [
+    "배추김치", "김치", "깍두기", "총각김치", "열무김치", "오이김치",
+    "파김치", "나박김치", "겉절이",
+    "떡만둣국", "떡만두국", "만둣국", "만두국",
+    "국", "탕", "찌개", "전골", "나물", "무침", "볶음", "조림",
+    "구이", "찜", "튀김", "밥", "볶음밥", "비빔밥", "카레",
+    "짜장", "면", "파스타", "샐러드", "수프", "스프",
+    "계란", "달걀", "고기", "돼지", "소고기", "닭", "치킨",
+    "생선", "오징어", "멸치", "두부"
+]
+
 
 # =========================================================
 # API 함수
@@ -298,30 +276,73 @@ def split_menu(menu):
 
 
 def find_desserts(menu):
+    """
+    급식 메뉴를 하나씩 확인해서 실제 후식으로 볼 수 있는 메뉴만 반환합니다.
 
+    중요:
+    - '배' 때문에 '배추김치'가 디저트가 되는 문제 방지
+    - '떡' 때문에 '떡만둣국'이 디저트가 되는 문제 방지
+    - 국/찌개/반찬 등에 디저트 단어가 들어가도 제외
+    - 단순히 키워드 하나가 들어갔다는 이유만으로 무조건 디저트로 세지 않음
+    """
     items = split_menu(menu)
-
     desserts = []
 
-    for item in items:
+    # 긴 단어부터 검사해 부분 일치 오류를 줄입니다.
+    dessert_words = sorted(DESSERT_KEYWORDS, key=len, reverse=True)
+    not_dessert_words = sorted(NOT_DESSERT_KEYWORDS, key=len, reverse=True)
 
-        clean = (
-            item
-            .replace(" ", "")
-            .lower()
+    for item in items:
+        clean = re.sub(r"\s+", "", str(item)).lower()
+
+        if not clean:
+            continue
+
+        # 1. 명확하게 디저트가 아닌 메뉴는 먼저 제외
+        if any(word.replace(" ", "").lower() in clean for word in not_dessert_words):
+            continue
+
+        # 2. 과일은 '배'처럼 다른 단어의 일부가 되는 경우가 있으므로
+        #    과일 이름은 메뉴 전체가 과일이거나 '과일/과일컵/과일모듬' 형태일 때만 인정
+        fruit_words = [
+            "딸기", "사과", "배", "포도", "귤", "오렌지", "수박", "참외",
+            "바나나", "키위", "복숭아", "파인애플", "망고", "멜론", "블루베리"
+        ]
+        is_fruit = (
+            clean in fruit_words
+            or clean == "과일"
+            or clean.startswith("과일컵")
+            or clean.startswith("과일모듬")
+            or clean.startswith("과일샐러드")
         )
 
-        for keyword in DESSERT_KEYWORDS:
+        if is_fruit:
+            desserts.append(item)
+            continue
 
-            key = (
-                keyword
-                .replace(" ", "")
-                .lower()
-            )
+        # 3. 나머지는 실제 후식 단어가 메뉴 안에 있는지 확인
+        matched = False
+        for word in dessert_words:
+            key = word.replace(" ", "").lower()
+            if key not in clean:
+                continue
 
-            if key in clean:
-                desserts.append(item)
-                break
+            # '떡'은 단독 떡 또는 찹쌀떡/인절미처럼 명확한 후식만 인정
+            if key == "떡":
+                if clean not in {"떡", "떡류"} and not any(
+                    x in clean for x in ["찹쌀떡", "인절미", "떡꼬치", "떡강정"]
+                ):
+                    continue
+
+            # '빵'은 빵/빵류/단팥빵 등 후식성 빵은 인정
+            if key == "빵" and clean in {"빵가루", "빵튀김"}:
+                continue
+
+            matched = True
+            break
+
+        if matched:
+            desserts.append(item)
 
     return desserts
 
@@ -785,151 +806,20 @@ if st.session_state.get("analysis_started", False):
         )
 
     # =====================================================
-    # 학교별 가장 많이 나온 디저트
-    # =====================================================
-
-    st.markdown("---")
-
-    st.markdown(
-        "## 🍮 학교별 최다 디저트"
-    )
-
-    top_rows = []
-
-    for result in results:
-
-        if result["counter"]:
-
-            top_dessert, top_count = (
-                result["counter"]
-                .most_common(1)[0]
-            )
-
-        else:
-
-            top_dessert = "-"
-            top_count = 0
-
-        top_rows.append(
-            {
-                "학교": result["school"],
-                "가장 많이 나온 디저트": top_dessert,
-                "등장 횟수": top_count
-            }
-        )
-
-    top_df = pd.DataFrame(
-        top_rows
-    )
-
-    st.dataframe(
-        top_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # =====================================================
-    # 학교별 TOP 10 디저트
-    # =====================================================
-
-    st.markdown("---")
-
-    st.markdown(
-        "## 🍓 학교별 디저트 TOP 10"
-    )
-
-    detail_rows = []
-
-    for result in results:
-
-        for dessert, count in (
-            result["counter"]
-            .most_common(10)
-        ):
-
-            detail_rows.append(
-                {
-                    "학교": result["school"],
-                    "디저트": dessert,
-                    "등장 횟수": count
-                }
-            )
-
-    detail_df = pd.DataFrame(
-        detail_rows
-    )
-
-    if not detail_df.empty:
-
-        fig2 = px.bar(
-            detail_df,
-            x="등장 횟수",
-            y="디저트",
-            color="학교",
-            orientation="h",
-            title="🍰 학교별 디저트 TOP 10"
-        )
-
-        fig2.update_layout(
-            height=max(
-                500,
-                len(detail_df) * 25
-            ),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)"
-        )
-
-        st.plotly_chart(
-            fig2,
-            use_container_width=True
-        )
-
-    else:
-
-        st.info(
-            "🍪 분석 기간에 디저트로 분류된 메뉴가 없습니다."
-        )
-
-    # =====================================================
     # 상세 학교별 결과
     # =====================================================
 
     st.markdown("---")
+    st.markdown("## 🧁 학교별 빈도수")
 
-    st.markdown(
-        "## 🧁 학교별 상세 결과"
+    st.caption(
+        "※ 디저트 종류를 순위로 보여주지 않고, 각 학교의 디저트 등장 횟수만 표시합니다."
     )
 
     for result in results:
-
         st.markdown(
-            f"### 🍰 {result['school']}"
+            f"### 🍰 {result['school']} — **{result['total']}회**"
         )
-
-        if result["counter"]:
-
-            rows = [
-                {
-                    "디저트": dessert,
-                    "등장 횟수": count
-                }
-                for dessert, count
-                in result["counter"].most_common()
-            ]
-
-            df = pd.DataFrame(rows)
-
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True
-            )
-
-        else:
-
-            st.info(
-                "🍪 디저트가 발견되지 않았습니다."
-            )
 
     # =====================================================
     # CSV 다운로드
@@ -941,7 +831,7 @@ if st.session_state.get("analysis_started", False):
         "## 🍰 결과 저장"
     )
 
-    csv = top_df.to_csv(
+    csv = comparison.to_csv(
         index=False,
         encoding="utf-8-sig"
     )
@@ -972,13 +862,13 @@ if st.session_state.get("analysis_started", False):
         </p>
 
         <p>
-        🍓 메뉴에 디저트 관련 키워드가 포함되어 있는 경우
-        디저트로 분류합니다.
+        🍓 메뉴를 하나씩 확인하여 김치, 국, 찌개, 반찬 등은 제외하고
+        실제 후식으로 볼 수 있는 메뉴만 디저트로 분류합니다.
         </p>
 
         <p>
-        🍰 따라서 과일이나 우유처럼 상황에 따라
-        디저트가 아닐 수도 있는 메뉴가 포함될 수 있습니다.
+        🍰 특히 <b>배추김치</b>와 <b>떡만둣국</b>처럼 디저트 단어가
+        다른 메뉴 이름에 포함되는 경우도 디저트로 세지 않습니다.
         </p>
 
         </div>
